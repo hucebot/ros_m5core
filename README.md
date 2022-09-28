@@ -3,7 +3,7 @@ Experiments with M5Core and Micro-ROS
 
 ## Docker
 
-`pip3 install catkin_pkg lark-parser empy colcon-common-extensions`
+-IMPORTANT: `pip3 install catkin_pkg lark-parser empy colcon-common-extensions`
 
 ## Micro-ros
 (included)

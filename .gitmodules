@@ -1,0 +1,9 @@
+[submodule "components/M5core2/M5Core2"]
+	path = components/M5core2/M5Core2
+	url = https://github.com/m5stack/M5Core2.git
+[submodule "components/arduino-esp32"]
+	path = components/arduino-esp32
+	url = https://github.com/espressif/arduino-esp32.git
+[submodule "components/micro_ros_espidf_component"]
+	path = components/micro_ros_espidf_component
+	url = https://github.com/micro-ROS/micro_ros_espidf_component
