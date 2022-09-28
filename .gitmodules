@@ -1,5 +1,5 @@
 [submodule "components/M5core2/M5Core2"]
-	path = components/M5core2/M5Core2
+	path = components/M5Core2/M5Core2
 	url = https://github.com/m5stack/M5Core2.git
 [submodule "components/arduino-esp32"]
 	path = components/arduino-esp32

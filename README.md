@@ -7,5 +7,5 @@ Experiments with M5Core and Micro-ROS
 
 ## Micro-ros
 (included)
-Details: https://github.com/micro-ROS/micro_ros_espidf_component
-
+- Details: https://github.com/micro-ROS/micro_ros_espidf_component
+- clean: `idf.py clean-microros` 
