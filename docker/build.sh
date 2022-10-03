@@ -1,0 +1,1 @@
+docker build -t ros_m5core.
