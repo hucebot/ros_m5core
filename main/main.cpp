@@ -43,7 +43,7 @@ void micro_ros_task(void * arg)
 
 	// create node
 	rcl_node_t node;
-	RCCHECK(rclc_node_init_default(&node, "esp32_int32_publisher", "", &support));
+	RCCHECK(rclc_node_init_default(&node, "eurobin_iot", "", &support));
 
 	// create publisher
 	RCCHECK(rclc_publisher_init_default(
