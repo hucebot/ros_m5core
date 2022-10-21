@@ -3,6 +3,7 @@
 #define CONFIG_MICRO_ROS_APP_TASK_PRIO 5
 #include <M5Core2.h>
 #include <WiFi.h>
+#include <Preferences.h> // this the EEPROM/flash interface
 
 #include <string.h>
 #include <stdio.h>
@@ -34,6 +35,7 @@ using namespace eurobin_iot;
 
 void micro_ros_task(void * arg)
 {
+	
 	printf("starting task...");
 	M5.Lcd.printf("Starting ROS2 task...\n");
 
@@ -47,9 +49,20 @@ void micro_ros_task(void * arg)
 	RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
 
 
+	// get the ID
+	Preferences prefs;
+	prefs.begin("eurobin_iot");
+	int id =  prefs.getUInt("id", 0);
+	Serial.printf("My ID is: %d\n", id); 
+
+	String node_name = String("eurobin_iot_") + String(id);
+	String button_topic_name = node_name + "/button_a";
+	String tof_topic_name = node_name + "/tof";
+		
+	Serial.println(button_topic_name.c_str());
 	// create node
 	rcl_node_t node;
-	RCCHECK(rclc_node_init_default(&node, "eurobin_iot", "", &support));
+	RCCHECK(rclc_node_init_default(&node, node_name.c_str(), "", &support));
 
 	// create publishers
 	/// button
@@ -59,7 +72,7 @@ void micro_ros_task(void * arg)
 		&pub_button,
 		&node,
 		ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-		"eurobin_iot/button_a"));
+		button_topic_name.c_str()));
 
 	/// Time of flight
 	rcl_publisher_t pub_tof;
@@ -73,7 +86,7 @@ void micro_ros_task(void * arg)
 			&pub_tof,
 			&node,
 			ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
-			"eurobin_iot/tof"));
+			tof_topic_name.c_str()));
 	}	
 
 	printf("Entering while loop...\n");
@@ -84,19 +97,30 @@ void micro_ros_task(void * arg)
 	uint16_t ambient_count, signal_count, dist;
 
 	M5.Lcd.setTextColor(WHITE, BLACK);
+
+	// show the ID
+	M5.Lcd.fillRoundRect(320 - 100, 240 - 70, 100, 70, 15, TFT_GREEN);
+	M5.Lcd.setCursor(320 - 100 + 5, 240 - 58);
+	M5.Lcd.setTextSize(14);
+	M5.Lcd.setTextColor(TFT_WHITE);
+	M5.Lcd.printf("%d", id);
+
+	int butt_c_activated = 0;
 	while(1){
 		//rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-		M5.update(); 
+		M5.update();
+		M5.Lcd.setTextSize(2);
+		M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
 		// button
 		M5.Lcd.setCursor(0, 90);
-		M5.Lcd.printf("Button A: %d", M5.BtnA.read());
+		M5.Lcd.printf("Buttons: %d %d %d", M5.BtnA.read(), M5.BtnB.read(), M5.BtnC.read());
 		msg_button.data = M5.BtnA.read();
 		RCSOFTCHECK(rcl_publish(&pub_button, &msg_button, NULL));
 		// time-of-flight
 		if (tof::ok) {
 			tof::read(&ambient_count, &signal_count, &dist);
 			M5.Lcd.setCursor(0, 110);
-			M5.Lcd.printf("Dist.: %d mm         ", dist);
+			M5.Lcd.printf("Dist.: %d mm         \n", dist);
 			// Serial.print("AC:"); Serial.print(ambient_count); Serial.print(" ");
 			// Serial.print("SC:"); Serial.print(signal_count); Serial.print(" D:"); Serial.println(dist);
 			msg_tof.data.data[0] = dist;
@@ -104,7 +128,25 @@ void micro_ros_task(void * arg)
 			msg_tof.data.data[2] = signal_count;
 			RCSOFTCHECK(rcl_publish(&pub_tof, &msg_tof, NULL));
 		}
-		usleep(5000);// 1ms
+		if (M5.BtnC.read()){ 
+			butt_c_activated ++;
+			M5.Lcd.printf("RESET ID [50] %d", butt_c_activated);
+		}
+		else 
+			butt_c_activated = 0;
+
+		if (butt_c_activated >= 50) {
+			M5.Lcd.printf(" => RESET ID");
+			int r = (int) random(100);
+			Serial.print("NEW ID:");
+			prefs.putUInt("id", r);
+			//preferences.end();
+			usleep(1000);
+			ESP.restart();
+		}
+
+		// reset the ID
+		usleep(5000);// 5ms
 	}
 
 	// free resources
@@ -117,9 +159,10 @@ void micro_ros_task(void * arg)
 extern "C" {
 void app_main(void)
 {
+	initArduino();
 	Wire.begin();          // join i2c bus (address optional for master)
 	M5.begin();
-	
+
 	// LCD
     M5.Lcd.fillScreen(BLACK); // Set the screen
     M5.Lcd.setCursor(0, 0);
@@ -141,7 +184,6 @@ void app_main(void)
 	}
 
 
-
     printf("Starting main...\n");
 #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
     printf("checking network interface...\n");
@@ -157,94 +199,6 @@ void app_main(void)
             CONFIG_MICRO_ROS_APP_TASK_PRIO,
             NULL);
     printf("Task created\n");
-}
-}
-
-#endif
-/*
-*******************************************************************************
-* Copyright (c) 2021 by M5Stack
-*                  Equipped with M5Core2 sample source code
-*                          配套  M5Core2 示例源代码
-* Visit for more information: https://docs.m5stack.com/en/unit/tof
-* 获取更多资料请访问: https://docs.m5stack.com/zh_CN/unit/tof
-*
-* Product: ToF.  激光测距
-* Date: 2021/8/16
-*******************************************************************************
-  Please connect to Port A,Use ToF Unit to detect distance and display distance data on the screen in real time.
-  请连接端口A,使用ToF Unit检测距离，并在屏幕上实时显示距离数据。
-*/
-
-#if 0
-
-
-#include <M5Core2.h>
-#include "bytes.h"
-#include "i2c.h"
-
-#define VL53L0X_REG_IDENTIFICATION_MODEL_ID 0xc0
-#define VL53L0X_REG_IDENTIFICATION_REVISION_ID 0xc2
-#define VL53L0X_REG_PRE_RANGE_CONFIG_VCSEL_PERIOD 0x50
-#define VL53L0X_REG_FINAL_RANGE_CONFIG_VCSEL_PERIOD 0x70
-#define VL53L0X_REG_SYSRANGE_START 0x00
-#define VL53L0X_REG_RESULT_INTERRUPT_STATUS 0x13
-#define VL53L0X_REG_RESULT_RANGE_STATUS 0x14
-#define TOF_I2C_ADDRESS 0x29  //I2C address of ToF
-
-
-using namespace eurobin_iot;
-
-
-void setup() {
-  // put your setup code here, to run once:
-  Wire.begin();          // join i2c bus (address optional for master)
-  Serial.begin(115200);  // start serial for output
-  Serial.println("VLX53LOX test started.");
-
-  M5.begin();
-  M5.Lcd.setCursor(50, 0, 4);
-  M5.Lcd.println(("VLX53LOX Example"));
-}
-
-extern "C"{
-void app_main() {
-    setup();
-
-	while (true) {
-		i2c::write_byte_data_at(TOF_I2C_ADDRESS, VL53L0X_REG_SYSRANGE_START, 0x01);
-
-		byte val = 0;
-		int cnt = 0;
-		while (cnt < 100) {  // 1 second waiting time max
-			delay(10);
-			val = i2c::read_byte_data_at(TOF_I2C_ADDRESS, VL53L0X_REG_RESULT_RANGE_STATUS);
-			if (val & 0x01) break;
-			cnt++;
-		}
-		if (val & 0x01)
-			Serial.println("ready");
-		else
-			Serial.println("not ready");
-
-		byte* data = i2c::read_block_data_at(address, 	0x14, 12);
-		uint16_t acnt = bytes::makeuint16(data[7], data[6]);
-		uint16_t scnt = bytes::makeuint16(data[9], data[8]);
-		uint16_t dist = bytes::makeuint16(data[11], data[10]);
-		byte DeviceRangeStatusInternal = ((data[0] & 0x78) >> 3);
-		M5.Lcd.fillRect(0, 35, 319, 239, BLACK);
-		M5.Lcd.setCursor(0, 35, 4);
-		M5.Lcd.print("ambient count: ");
-		M5.Lcd.println(acnt);
-		M5.Lcd.print("signal count: ");
-		M5.Lcd.println(scnt);
-		M5.Lcd.print("distance: ");
-		M5.Lcd.println(dist);
-		Serial.println(dist);
-		M5.Lcd.print("status: ");
-		M5.Lcd.println(DeviceRangeStatusInternal);
-		delay(1000);
-	}
 }
 }
 

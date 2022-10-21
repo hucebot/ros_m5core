@@ -1,1 +1,1 @@
-docker build -t ros_m5core.
+docker build -t ros_m5core:latest .
