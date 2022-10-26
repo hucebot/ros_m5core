@@ -7,6 +7,3 @@
 [submodule "components/micro_ros_espidf_component"]
 	path = components/micro_ros_espidf_component
 	url = https://github.com/micro-ROS/micro_ros_espidf_component
-[submodule "components/FastLed/FastLED"]
-	path = components/FastLed/FastLED
-	url = https://github.com/FastLED/FastLED.git
