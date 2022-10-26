@@ -21,6 +21,7 @@
 #include <std_msgs/msg/int16_multi_array.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
+#include <FastLED.h>
 
 
 #include "bytes.h"
@@ -28,6 +29,37 @@
 #include "tof.h"
 
 using namespace eurobin_iot;
+
+namespace eurobin_iot {
+	uint8_t mode = 0;
+	uint8_t init_mode = 0;
+	
+	namespace modes {
+		enum { NONE = 0,
+			KEY,
+			TOF,
+			SIZE // number of modes	
+		};
+	}
+	namespace key {
+		static const uint8_t pin  = 33;
+		static const uint8_t led_pin = 32;
+		CRGB leds[1];
+	}
+}
+
+const char* get_mode(uint8_t mode) {
+	switch(mode) {
+		case 0:
+			return "undefined";
+		case 1:
+			return "key";
+		case 2: 
+			return "ToF";
+		default:
+			return "error";
+	}
+}
 
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc); M5.Lcd.printf("Failed status on line %d: %d. Aborting.\n",__LINE__,(int)temp_rc);vTaskDelete(NULL);}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);M5.Lcd.printf("Failed status on line %d: %d. Continuing.\n",__LINE__,(int)temp_rc);}}
@@ -57,6 +89,7 @@ void micro_ros_task(void * arg)
 
 	String node_name = String("eurobin_iot_") + String(id);
 	String button_topic_name = node_name + "/button_a";
+	String key_topic_name = node_name + "/key";
 	String tof_topic_name = node_name + "/tof";
 		
 	Serial.println(button_topic_name.c_str());
@@ -88,6 +121,17 @@ void micro_ros_task(void * arg)
 			ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int16MultiArray),
 			tof_topic_name.c_str()));
 	}	
+	
+	// key
+	rcl_publisher_t pub_key;
+	std_msgs__msg__Int32 msg_key;
+	if (eurobin_iot::init_mode == eurobin_iot::modes::KEY) {
+		RCCHECK(rclc_publisher_init_default(
+			&pub_key,
+			&node,
+			ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+			key_topic_name.c_str()));
+	}
 
 	printf("Entering while loop...\n");
 	M5.Lcd.setTextColor(GREEN, BLACK);
@@ -105,21 +149,33 @@ void micro_ros_task(void * arg)
 	M5.Lcd.setTextColor(TFT_WHITE);
 	M5.Lcd.printf("%d", id);
 
+	// MODe
+	M5.Lcd.setCursor(150, 240 - 20);
+	M5.Lcd.setTextSize(2);
+	M5.Lcd.printf("mode");
+
+
 	int butt_c_activated = 0;
 	while(1){
 		//rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
 		M5.update();
 		M5.Lcd.setTextSize(2);
 		M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
-		// button
 		M5.Lcd.setCursor(0, 90);
-		M5.Lcd.printf("Buttons: %d %d %d", M5.BtnA.read(), M5.BtnB.read(), M5.BtnC.read());
+
+		M5.Lcd.printf("Mode:%s          \n",  get_mode(eurobin_iot::mode));
+		if (eurobin_iot::mode != eurobin_iot::init_mode)
+			M5.Lcd.printf("Press RESET!      \n");
+
+		// button	
+		M5.Lcd.printf("Buttons: %d %d %d      \n", M5.BtnA.read(), M5.BtnB.read(), M5.BtnC.read());
 		msg_button.data = M5.BtnA.read();
 		RCSOFTCHECK(rcl_publish(&pub_button, &msg_button, NULL));
+	
 		// time-of-flight
 		if (tof::ok) {
 			tof::read(&ambient_count, &signal_count, &dist);
-			M5.Lcd.setCursor(0, 110);
+			//M5.Lcd.setCursor(0, 110);
 			M5.Lcd.printf("Dist.: %d mm         \n", dist);
 			// Serial.print("AC:"); Serial.print(ambient_count); Serial.print(" ");
 			// Serial.print("SC:"); Serial.print(signal_count); Serial.print(" D:"); Serial.println(dist);
@@ -128,6 +184,32 @@ void micro_ros_task(void * arg)
 			msg_tof.data.data[2] = signal_count;
 			RCSOFTCHECK(rcl_publish(&pub_tof, &msg_tof, NULL));
 		}
+
+		// red key
+		if (eurobin_iot::init_mode == eurobin_iot::modes::KEY) {
+			if (!digitalRead(key::pin)) {
+				key::leds[0] = CRGB::Blue;
+				M5.Lcd.println(("Key: 1       "));
+				FastLED.setBrightness(255);
+				FastLED.show();
+				msg_key.data = 1;
+			} else {
+				M5.Lcd.println(("Key: 0      "));
+				key::leds[0] = CRGB::Red;
+				FastLED.setBrightness(255);
+				FastLED.show();
+				msg_key.data = 0;
+			}
+			RCSOFTCHECK(rcl_publish(&pub_key, &msg_key, NULL));
+		}
+
+		// mode
+		if (M5.BtnB.read()){ 
+			eurobin_iot::mode = (eurobin_iot::mode + 1) % eurobin_iot::modes::SIZE;
+			prefs.putUInt("mode", eurobin_iot::mode);
+		}
+
+
 		if (M5.BtnC.read()){ 
 			butt_c_activated ++;
 			M5.Lcd.printf("RESET ID [50] %d", butt_c_activated);
@@ -160,7 +242,16 @@ extern "C" {
 void app_main(void)
 {
 	initArduino();
-	Wire.begin();          // join i2c bus (address optional for master)
+	// mode
+	Preferences prefs;
+	prefs.begin("eurobin_iot");
+	eurobin_iot::mode =  prefs.getUInt("mode", 0);
+	eurobin_iot::init_mode =  eurobin_iot::mode;
+	
+	Serial.printf("ROS_IOT -> MODE: %d %s\n", eurobin_iot::mode, get_mode(eurobin_iot::mode));
+
+	if (eurobin_iot::mode == eurobin_iot::modes::TOF)
+		Wire.begin();          // join i2c bus (address optional for master)
 	M5.begin();
 
 	// LCD
@@ -173,16 +264,25 @@ void app_main(void)
     M5.Lcd.setTextColor(WHITE);
 
 	// check the time-of-flight
-	Serial.println("Initializing I2C...");
-	Serial.print("Time of flight: ");
-	uint8_t error = tof::check();
-	if (tof::ok)
-		Serial.println("ok");
-	else {
-		Serial.print("error ");
-		Serial.println(error);
+	if (eurobin_iot::mode == eurobin_iot::modes::TOF) {
+		Serial.println("Initializing I2C...");
+		Serial.print("Time of flight: ");
+		uint8_t error = tof::check();
+		if (tof::ok)
+			Serial.println("ok");
+		else {
+			Serial.print("error ");
+			Serial.println(error);
+		}
 	}
 
+	// setup the key button
+	if (eurobin_iot::mode == eurobin_iot::modes::KEY) {
+		pinMode(key::pin, INPUT_PULLUP);
+		FastLED.addLeds<SK6812, key::led_pin, GRB>(key::leds, 1);
+		key::leds[0] = CRGB::Blue;
+		FastLED.setBrightness(0);
+	}
 
     printf("Starting main...\n");
 #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
