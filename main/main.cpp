@@ -38,6 +38,7 @@ namespace eurobin_iot {
 		enum { NONE = 0,
 			KEY,
 			TOF,
+			HALL,
 			SIZE // number of modes	
 		};
 	}
@@ -45,6 +46,9 @@ namespace eurobin_iot {
 		static const uint8_t pin  = 33;
 		static const uint8_t led_pin = 32;
 		CRGB leds[1];
+	}
+	namespace hall {
+		static const uint8_t pin = 33;
 	}
 }
 
@@ -56,6 +60,8 @@ const char* get_mode(uint8_t mode) {
 			return "key";
 		case 2: 
 			return "ToF";
+		case 3:
+			return "Hall";
 		default:
 			return "error";
 	}
@@ -88,17 +94,16 @@ void micro_ros_task(void * arg)
 	Serial.printf("My ID is: %d\n", id); 
 
 	String node_name = String("eurobin_iot_") + String(id);
-	String button_topic_name = node_name + "/button_a";
-	String key_topic_name = node_name + "/key";
-	String tof_topic_name = node_name + "/tof";
-		
-	Serial.println(button_topic_name.c_str());
+
+	Serial.printf("ROS 2 Topic prefix: %s", node_name.c_str());
+
 	// create node
 	rcl_node_t node;
 	RCCHECK(rclc_node_init_default(&node, node_name.c_str(), "", &support));
 
 	// create publishers
-	/// button
+	/// touch button (left)
+	String button_topic_name = node_name + "/button_a";
 	rcl_publisher_t pub_button;
 	std_msgs__msg__Int32 msg_button;
 	RCCHECK(rclc_publisher_init_default(
@@ -108,6 +113,7 @@ void micro_ros_task(void * arg)
 		button_topic_name.c_str()));
 
 	/// Time of flight
+	String tof_topic_name = node_name + "/tof";
 	rcl_publisher_t pub_tof;
 	std_msgs__msg__Int16MultiArray msg_tof;
 	int16_t data_tof[3];// signed because no default message for unsigned...
@@ -123,6 +129,7 @@ void micro_ros_task(void * arg)
 	}	
 	
 	// key
+	String key_topic_name = node_name + "/key";
 	rcl_publisher_t pub_key;
 	std_msgs__msg__Int32 msg_key;
 	if (eurobin_iot::init_mode == eurobin_iot::modes::KEY) {
@@ -131,6 +138,17 @@ void micro_ros_task(void * arg)
 			&node,
 			ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
 			key_topic_name.c_str()));
+	}
+	// hall sensor
+	String hall_topic_name = node_name + "/hall";
+	rcl_publisher_t pub_hall;
+	std_msgs__msg__Int32 msg_hall;
+	if (eurobin_iot::init_mode == eurobin_iot::modes::HALL) {
+		RCCHECK(rclc_publisher_init_default(
+			&pub_hall,
+			&node,
+			ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+			hall_topic_name.c_str()));
 	}
 
 	printf("Entering while loop...\n");
@@ -150,23 +168,31 @@ void micro_ros_task(void * arg)
 	M5.Lcd.printf("%d", id);
 
 	// MODe
+	M5.Lcd.fillRoundRect(140, 240 - 25, 60, 25, 10, TFT_GREEN);
 	M5.Lcd.setCursor(150, 240 - 20);
 	M5.Lcd.setTextSize(2);
 	M5.Lcd.printf("mode");
 
 
 	int butt_c_activated = 0;
+	int butt_mode_activated = 0;
+	
 	while(1){
 		//rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
 		M5.update();
 		M5.Lcd.setTextSize(2);
+
+		if (eurobin_iot::mode != eurobin_iot::init_mode) {
+			M5.Lcd.setCursor(0, 240 - 20);
+			M5.Lcd.printf("-> RESET\n");
+		}
+
+
 		M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
 		M5.Lcd.setCursor(0, 90);
 
 		M5.Lcd.printf("Mode:%s          \n",  get_mode(eurobin_iot::mode));
-		if (eurobin_iot::mode != eurobin_iot::init_mode)
-			M5.Lcd.printf("Press RESET!      \n");
-
+		
 		// button	
 		M5.Lcd.printf("Buttons: %d %d %d      \n", M5.BtnA.read(), M5.BtnB.read(), M5.BtnC.read());
 		msg_button.data = M5.BtnA.read();
@@ -202,11 +228,24 @@ void micro_ros_task(void * arg)
 			}
 			RCSOFTCHECK(rcl_publish(&pub_key, &msg_key, NULL));
 		}
+		// hall sensor
+		if (eurobin_iot::init_mode == eurobin_iot::modes::HALL) {
+			if (digitalRead(hall::pin))
+				msg_hall.data = 0;
+			else
+				msg_hall.data = 1;
+			M5.Lcd.printf("Hall: %d\n", msg_hall.data);
+			RCSOFTCHECK(rcl_publish(&pub_hall, &msg_hall, NULL));
+		}
 
 		// mode
-		if (M5.BtnB.read()){ 
+		if (M5.BtnB.read())
+			butt_mode_activated++;
+		if (butt_mode_activated > 15)
+		{ 
 			eurobin_iot::mode = (eurobin_iot::mode + 1) % eurobin_iot::modes::SIZE;
 			prefs.putUInt("mode", eurobin_iot::mode);
+			butt_mode_activated = 0;
 		}
 
 
@@ -282,6 +321,11 @@ void app_main(void)
 		FastLED.addLeds<SK6812, key::led_pin, GRB>(key::leds, 1);
 		key::leds[0] = CRGB::Blue;
 		FastLED.setBrightness(0);
+	}
+
+	// setup the hall sensor button
+	if (eurobin_iot::mode == eurobin_iot::modes::HALL) {
+		pinMode(hall::pin, INPUT);
 	}
 
     printf("Starting main...\n");
