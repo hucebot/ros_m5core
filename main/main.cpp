@@ -22,11 +22,12 @@
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
 #include <FastLED.h>
-
+#
 
 #include "bytes.h"
 #include "i2c.h"
 #include "tof.h"
+#include "sound.h"
 
 using namespace eurobin_iot;
 
@@ -301,6 +302,15 @@ void app_main(void)
     M5.Lcd.printf("Eurobin IOT ROS2\n");
 	M5.Lcd.printf("SSID: %s\n", CONFIG_ESP_WIFI_SSID);
     M5.Lcd.setTextColor(WHITE);
+
+	// sound
+	//eurobin_iot::sound::play_pcm(eurobin_iot::sound::start_pcm, sizeof(eurobin_iot::sound::start_pcm));
+	Speaker speaker;
+	speaker.begin();
+	speaker.InitI2SSpeakOrMic(MODE_SPK);
+	speaker.DingDong();
+	eurobin_iot::sound::play_pcm(eurobin_iot::sound::test_pcm, sizeof(eurobin_iot::sound::test_pcm));
+
 
 	// check the time-of-flight
 	if (eurobin_iot::mode == eurobin_iot::modes::TOF) {
