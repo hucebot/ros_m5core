@@ -28,6 +28,8 @@
 #include "i2c.h"
 #include "tof.h"
 
+#include "doorbell.h"
+
 using namespace eurobin_iot;
 
 namespace eurobin_iot {
@@ -73,7 +75,11 @@ const char* get_mode(uint8_t mode) {
 
 void micro_ros_task(void * arg)
 {
-	
+	Speaker speaker;
+	speaker.begin();
+	speaker.InitI2SSpeakOrMic(MODE_SPK);
+	speaker.DingDong();
+
 	printf("starting task...");
 	M5.Lcd.printf("Starting ROS2 task...\n");
 
@@ -197,7 +203,14 @@ void micro_ros_task(void * arg)
 		M5.Lcd.printf("Buttons: %d %d %d      \n", M5.BtnA.read(), M5.BtnB.read(), M5.BtnC.read());
 		msg_button.data = M5.BtnA.read();
 		RCSOFTCHECK(rcl_publish(&pub_button, &msg_button, NULL));
-	
+		if (msg_button.data == 1) {
+			//speaker.DingDong();
+			size_t bytes_written = 0;
+			// we need SIGNED 8-bit PCM, headerless (of course)
+  			i2s_write(Speak_I2S_NUMBER, sound::doorbell, sound::doorbell_size, &bytes_written, portMAX_DELAY);
+
+		}
+
 		// time-of-flight
 		if (tof::ok) {
 			tof::read(&ambient_count, &signal_count, &dist);
