@@ -2,17 +2,16 @@
 #define CONFIG_MICRO_ROS_APP_STACK 4000
 #define CONFIG_MICRO_ROS_APP_TASK_PRIO 5
 #include <M5Core2.h>
-#include <WiFi.h>
 #include <Preferences.h> // this the EEPROM/flash interface
 
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
-#include "esp_system.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_log.h>
+#include <esp_system.h>
 
 #include <uros_network_interfaces.h>
 #include <rcl/rcl.h>
@@ -27,15 +26,15 @@
 #include "bytes.h"
 #include "i2c.h"
 #include "tof.h"
-
-#include "doorbell.h"
+#include "sound.h"
 
 using namespace eurobin_iot;
 
 namespace eurobin_iot {
 	uint8_t mode = 0;
 	uint8_t init_mode = 0;
-	
+	bool wifi = false;
+
 	namespace modes {
 		enum { NONE = 0,
 			KEY,
@@ -78,7 +77,7 @@ void micro_ros_task(void * arg)
 	Speaker speaker;
 	speaker.begin();
 	speaker.InitI2SSpeakOrMic(MODE_SPK);
-	speaker.DingDong();
+	eurobin_iot::sound::ding();
 
 	printf("starting task...\n");
 	M5.Lcd.printf("Starting ROS2 task...\n");
@@ -102,7 +101,7 @@ void micro_ros_task(void * arg)
 
 	String node_name = String("eurobin_iot_") + String(id);
 
-	printf("ROS 2 Topic prefix: %s", node_name.c_str());
+	printf("ROS 2 Topic prefix: %s\n", node_name.c_str());
 
 	// create node
 	rcl_node_t node;
@@ -174,7 +173,7 @@ void micro_ros_task(void * arg)
 	M5.Lcd.setTextColor(TFT_WHITE);
 	M5.Lcd.printf("%d", id);
 
-	// MODe
+	// mode
 	M5.Lcd.fillRoundRect(140, 240 - 25, 60, 25, 10, TFT_GREEN);
 	M5.Lcd.setCursor(150, 240 - 20);
 	M5.Lcd.setTextSize(2);
@@ -185,7 +184,6 @@ void micro_ros_task(void * arg)
 	int butt_mode_activated = 0;
 	
 	while(1){
-		//rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
 		M5.update();
 		M5.Lcd.setTextSize(2);
 
@@ -204,13 +202,8 @@ void micro_ros_task(void * arg)
 		M5.Lcd.printf("Buttons: %d %d %d      \n", M5.BtnA.read(), M5.BtnB.read(), M5.BtnC.read());
 		msg_button.data = M5.BtnA.read();
 		RCSOFTCHECK(rcl_publish(&pub_button, &msg_button, NULL));
-		if (msg_button.data == 1) {
-			//speaker.DingDong();
-			size_t bytes_written = 0;
-			// we need SIGNED 8-bit PCM, headerless (of course)
-  			i2s_write(Speak_I2S_NUMBER, sound::doorbell, sound::doorbell_size, &bytes_written, portMAX_DELAY);
-
-		}
+		if (msg_button.data == 1)
+			eurobin_iot::sound::doorbell();
 
 		// time-of-flight
 		if (tof::ok) {
@@ -242,6 +235,7 @@ void micro_ros_task(void * arg)
 			}
 			RCSOFTCHECK(rcl_publish(&pub_key, &msg_key, NULL));
 		}
+
 		// hall sensor
 		if (eurobin_iot::init_mode == eurobin_iot::modes::HALL) {
 			if (digitalRead(hall::pin))
@@ -345,7 +339,8 @@ void app_main(void)
     printf("Starting main...\n");
 #if defined(CONFIG_MICRO_ROS_ESP_NETIF_WLAN) || defined(CONFIG_MICRO_ROS_ESP_NETIF_ENET)
     printf("checking network interface...\n");
-    ESP_ERROR_CHECK(uros_network_interface_initialize());
+    esp_err_t err = uros_network_interface_initialize();
+	// for now, we cannot get the error
 #endif
 
     printf("Creating the uROS task...\n");
