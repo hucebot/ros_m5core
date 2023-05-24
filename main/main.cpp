@@ -80,11 +80,12 @@ void micro_ros_task(void * arg)
 	speaker.InitI2SSpeakOrMic(MODE_SPK);
 	speaker.DingDong();
 
-	printf("starting task...");
+	printf("starting task...\n");
 	M5.Lcd.printf("Starting ROS2 task...\n");
 
 	rcl_allocator_t allocator = rcl_get_default_allocator();
 	rclc_support_t support;
+	rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
 
 	rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
 	RCCHECK(rcl_init_options_init(&init_options, allocator));
@@ -97,11 +98,11 @@ void micro_ros_task(void * arg)
 	Preferences prefs;
 	prefs.begin("eurobin_iot");
 	int id =  prefs.getUInt("id", 0);
-	Serial.printf("My ID is: %d\n", id); 
+	printf("My ID is: %d\n", id); 
 
 	String node_name = String("eurobin_iot_") + String(id);
 
-	Serial.printf("ROS 2 Topic prefix: %s", node_name.c_str());
+	printf("ROS 2 Topic prefix: %s", node_name.c_str());
 
 	// create node
 	rcl_node_t node;
@@ -279,8 +280,8 @@ void micro_ros_task(void * arg)
 			ESP.restart();
 		}
 
-		// reset the ID
-		usleep(5000);// 5ms
+		rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+		usleep(250000);
 	}
 
 	// free resources
