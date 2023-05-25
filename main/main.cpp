@@ -203,7 +203,7 @@ void micro_ros_task(void * arg)
 		msg_button.data = M5.BtnA.read();
 		RCSOFTCHECK(rcl_publish(&pub_button, &msg_button, NULL));
 		if (msg_button.data == 1)
-			eurobin_iot::sound::doorbell();
+			eurobin_iot::sound::ding();
 
 		// time-of-flight
 		if (tof::ok) {
@@ -226,6 +226,7 @@ void micro_ros_task(void * arg)
 				FastLED.setBrightness(255);
 				FastLED.show();
 				msg_key.data = 1;
+				eurobin_iot::sound::doorbell();
 			} else {
 				M5.Lcd.println(("Key: 0      "));
 				key::leds[0] = CRGB::Red;
