@@ -294,7 +294,7 @@ void micro_ros_task(void *arg)
 		// mode
 		if (M5.BtnB.read())
 			butt_mode_activated++;
-		if (butt_mode_activated > 15)
+		if (butt_mode_activated > 5)
 		{
 			eurobin_iot::mode = (eurobin_iot::mode + 1) % eurobin_iot::modes::SIZE;
 			prefs.putUInt("mode", eurobin_iot::mode);
