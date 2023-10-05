@@ -351,7 +351,7 @@ void micro_ros_task(void *arg)
 		}
 
 		rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
-		usleep(250000);
+		usleep(100000);
 	}
 
 	// free resources
