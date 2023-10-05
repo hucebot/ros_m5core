@@ -30,6 +30,7 @@
 #include "i2c.h"
 #include "tof.h"
 #include "sound.h"
+#include "scale.h"
 
 using namespace eurobin_iot;
 
@@ -47,6 +48,7 @@ namespace eurobin_iot
 			KEY,
 			TOF,
 			HALL,
+			SCALE,
 			SIZE // number of modes
 		};
 	}
@@ -74,6 +76,8 @@ const char *get_mode(uint8_t mode)
 		return "ToF";
 	case 3:
 		return "Hall";
+	case 4:
+		return "Scale/force";
 	default:
 		return "error";
 	}
@@ -169,6 +173,19 @@ void micro_ros_task(void *arg)
 			tof_topic_name.c_str()));
 	}
 
+	// scale
+	String scale_topic_name = node_name + "/scale";
+	rcl_publisher_t pub_scale;
+	std_msgs__msg__Int32 msg_scale;
+	if (eurobin_iot::init_mode == eurobin_iot::modes::SCALE)
+	{
+		RCCHECK(rclc_publisher_init_default(
+			&pub_scale,
+			&node,
+			ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+			scale_topic_name.c_str()));
+	}
+
 	// key
 	String key_topic_name = node_name + "/key";
 	rcl_publisher_t pub_key;
@@ -255,6 +272,19 @@ void micro_ros_task(void *arg)
 			msg_tof.data.data[1] = ambient_count;
 			msg_tof.data.data[2] = signal_count;
 			RCSOFTCHECK(rcl_publish(&pub_tof, &msg_tof, NULL));
+		}
+
+		// scale
+		if (eurobin_iot::init_mode == eurobin_iot::modes::SCALE) {
+			//scale::print();
+			int w = scale::weight();
+			msg_scale.data = w;
+			M5.Lcd.printf("weight: %d grams     \n", w);
+			RCSOFTCHECK(rcl_publish(&pub_scale, &msg_scale, NULL));
+			if (scale::button()) {
+				scale::tare();
+				Serial.println("scale::tare");
+			}
 		}
 
 		// red key
@@ -344,7 +374,7 @@ extern "C"
 
 		Serial.printf("ROS_IOT -> MODE: %d %s\n", eurobin_iot::mode, get_mode(eurobin_iot::mode));
 
-		if (eurobin_iot::mode == eurobin_iot::modes::TOF)
+		if (eurobin_iot::mode == eurobin_iot::modes::TOF || eurobin_iot::mode == eurobin_iot::modes::SCALE)
 			Wire.begin(); // join i2c bus (address optional for master)
 		M5.begin();
 
@@ -385,6 +415,12 @@ extern "C"
 		if (eurobin_iot::mode == eurobin_iot::modes::HALL)
 		{
 			pinMode(hall::pin, INPUT);
+		}
+
+		// scale
+		if (eurobin_iot::mode == eurobin_iot::modes::SCALE)
+		{
+			scale::init();
 		}
 
 		printf("Starting main...\n");

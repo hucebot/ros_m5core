@@ -10,3 +10,6 @@
 [submodule "components/FastLED-idf/FastLED"]
 	path = components/FastLED-idf/FastLED
 	url = https://github.com/FastLED/FastLED.git
+[submodule "components/M5Unit-Scales/M5Unit-Scales"]
+	path = components/M5Unit-Scales/M5Unit-Scales
+	url = https://github.com/m5stack/M5Unit-Scales.git
